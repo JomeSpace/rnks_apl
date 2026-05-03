@@ -1,22 +1,126 @@
-# RnKs_APL
+# Go-Back-N ARQ Protocol
 
-# Aufruf von Client und server
+Reliable file transfer over UDP/IPv6 using a sliding-window Go-Back-N protocol with configurable packet loss simulation. ~1,300 lines of C.
 
-Der Client wird über die Kommandozeile mit den folgenden Parametern aufgerufen: ./client -a <server> -p <port> -f <file> -w <window>. Dabei steht -a <server> für die Adresse des Servers (z. B. localhost oder eine IP-Adresse; als Default wird loopback verwendet), -p <port> für den Port, auf dem der Server lauscht ( DEFAULT_PORT = 3333), -f <file> für den Dateinamen der zu sendenden Eingabedatei und -w <window> für die Größe des Sendefensters im Bereich 1 bis 10.
-Der Server wird mit dem Befehl ./server -p <port> -f <outfile> [-r <lossReq>] [-a <lossAck>] gestartet. Hier bedeutet -p <port> den Port, auf dem der Server Anfragen annimmt (DEFAULT_PORT = 3333), -f <outfile> den Namen der Ausgabedatei, in die der Server die empfangenen Daten schreibt, -r <lossReq> optional die Wahrscheinlichkeit, mit der ein Request-/Datenpaket verloren geht (im Intervall 0.0 bis 1.0) und -a <lossAck> optional die Wahrscheinlichkeit, mit der ein ACK verloren geht (ebenfalls 0.0 bis 1.0).
+## Overview
 
-Die Textdateien zur Ein und Ausgabe sollten standardmäßig in /src abgelegt werden.
-Um die Ausführung zu testen, wird zunächst der Server gestartet (z. B. auf einem bestimmten Port), der dann im Hintergrund läuft und auf Client-Verbindungen wartet. Danach wird der Client in einem separaten Terminal gestartet, wobei er die gewünschte Serveradresse, den Port und die zu sendende Datei (/src) sowie die Fenstergröße angibt. Der Client sendet die Datei an den Server, der diese in die Ausgabedatei schreibt; beide Prozesse müssen sich im selben Netzwerk (oder lokal) finden können.
+A from-scratch implementation of the Go-Back-N Automatic Repeat Request protocol for reliable data transmission over unreliable UDP. The sender maintains a sliding window of unacknowledged packets with a ring buffer, uses cumulative ACKs to advance the window, and retransmits on timeout. The server can simulate both request and ACK loss to test protocol robustness under adverse network conditions.
 
+## Architecture
 
-# Hinweis zum einrichten von Client und Server
-Falls sie das MakeFile zum compailieren von server und client nutzen wollen müssen sie davor noch einen /build Ordner erstellen. Das MakeFile legt dort standartmäßig beide ausführbare Programme ab. Ansonsten lassen sich die Skripte auch standardmäßig, falls installiert direkt über gcc compailieren.
+```
++------------------+     +------------------+
+|    client.c      |     |    server.c      |   Application Layer
+|  (file reader)   |     |  (file writer)   |   CLI, file I/O
++------------------+     +------------------+
+        |                         |
++------------------+     +------------------+
+|   clientSy.c     |     |   serverSy.c     |   Protocol Layer
+|   GBN sender     |     |   GBN receiver   |   ARQ, windowing, timers
++------------------+     +------------------+
+        |                         |
+        +---- UDP/IPv6 (SOCK_DGRAM) -----+   Transport Layer
+```
 
-# Hinweis input.txt
-Inhalt ist ein Beispiel Text von GutenbergProjekt.de. Wurde für das Testing verwendet.
+Each layer has a clean interface boundary. The application layer handles file I/O and CLI parsing. The protocol layer implements Go-Back-N with no knowledge of what data it carries. The transport layer is raw UDP/IPv6 sockets.
 
-# Erklärung auf die selbstständige Anfertigung
+### Key Design Decisions
 
-Die Client- und Server-Programme wurden selbstständig in C implementiert. Die Grundlagen der Go-Back-N-Logik wurden anhand der Vorlesungsunterlagen erarbeitet. Die Implementierung des Protokolls (z. B. Fenster- und Timeout-Logik, Fehlermodelle mittels lossReq und lossAck, sowie die Dateiübertragung) erfolgte größtenteils vollständig eigenständig und ohne direkte Übernahme von Code. Zur Netzwerkprogrammierung (z. B. Socket-Anlegen, connect, bind, send, recv, select) sowie der Timout-Logik wurden KI-gestützte Hilfstools verwendet (bspw. Chat-GPT, Claude Code). Dadurch konnte die Schnittstelle zwischen Client und Server korrekt implementiert werden. Die KI-Ausgaben wurden geprüft und entsprechend der Aufgabenstellung angepasst, sodass diese im Einklang mit dem eigens verfassten Bestandscode stehen.
+- **Ring buffer** for unacknowledged packets (2x window size) — enables Go-Back-N retransmission without re-reading the file
+- **Time-synchronous sending** — one packet per interval via `select()`, ensuring deterministic protocol behavior
+- **Cumulative ACKs** — `SeNo` = next expected sequence number; all packets below are confirmed
+- **Retransmit priority** — retransmissions are always sent before new data packets
+- **No receiver buffering** — out-of-order packets are dropped (classic GBN tradeoff vs. Selective Repeat)
 
-Die Lösung wurde unter Linux getestet und ist im Labor U515 kompilier- und lauffähig. Die Programme werden mit den vorgeschriebenen Parametern aufgerufen, geben bei falscher Aufrufweise die geforderten Usage-Hinweise aus und übertragen die angegebene Datei im vorgegebenen Format.
+## Protocol
+
+### Connection Lifecycle
+
+1. **Handshake**: Client sends `ReqHello`, server responds with `AnswHello`
+2. **Data transfer**: Sliding window with cumulative ACKs and timeout-based retransmission
+3. **Drain**: Client waits until all in-flight packets are acknowledged
+4. **Close**: Client sends `ReqClose`, server responds with `AnswOk`
+
+### Error-Free Transfer (W=1)
+
+<img src="docs/sequence-diagrams/error-free-transfer.png" width="400">
+
+### Packet Loss and Retransmission
+
+<img src="docs/sequence-diagrams/packet-loss-retransmission.png" width="400">
+
+### Window Size Comparison
+
+<img src="docs/sequence-diagrams/window-size-comparison.png" width="400">
+
+### State Machines
+
+**Client (Sender)**
+
+<img src="docs/state-diagrams/client-state-machine.png" width="700">
+
+**Server (Receiver)**
+
+<img src="docs/state-diagrams/server-state-machine.png" width="700">
+
+## Usage
+
+### Build
+
+```bash
+make
+```
+
+### Run
+
+```bash
+# Terminal 1: Start the server
+./build/server -p 3333 -f src/output.txt
+
+# Terminal 2: Send a file with window size 5
+./build/client -a ::1 -p 3333 -f src/input.txt -w 5
+```
+
+### Simulate Packet Loss
+
+```bash
+# 30% request loss, 10% ACK loss
+./build/server -p 3333 -f src/output.txt -r 0.3 -a 0.1
+./build/client -a ::1 -p 3333 -f src/input.txt -w 5
+```
+
+### Parameters
+
+**Client**: `./client -a <server> -p <port> -f <file> -w <window>`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-a` | Server address | `::1` (loopback) |
+| `-p` | Server port | `3333` |
+| `-f` | Input file to transfer | required |
+| `-w` | Window size (1–10) | required |
+
+**Server**: `./server -p <port> -f <outfile> [-r <lossReq>] [-a <lossAck>]`
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-p` | Listen port | `3333` |
+| `-f` | Output file | required |
+| `-r` | Request loss probability (0.0–1.0) | `0.0` |
+| `-a` | ACK loss probability (0.0–1.0) | `0.0` |
+
+## Configuration
+
+Protocol parameters are defined in [`src/data.h`](src/data.h):
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `GBN_MAX_WINDOW` | 10 | Maximum sliding window size |
+| `GBN_BUFFER_SIZE` | 20 | Ring buffer slots (2x max window) |
+| `GBN_TIMEOUT_INT_MS` | 100 | Interval duration in milliseconds |
+| `GBN_TIMEOUT_UNITS` | 3 | Timeout = 3 intervals (300ms) |
+| `BufferSize` | 512 | Maximum payload per packet |
+
+## License
+
+MIT

@@ -7,7 +7,6 @@
 #include "config.h"
 #include "serverSy.h"
 
-/* Anwendungszustand: Ausgabedatei */
 static const char *gOutputFile = NULL;
 static FILE       *gFp         = NULL;
 static int         gFileOk     = 0;
@@ -16,18 +15,17 @@ static void usage(const char *progName)
 {
     fprintf(stderr, "Usage: %s -p <port> -f <outfile> [-r <lossReq>] [-a <lossAck>]\n",
             progName);
-    fprintf(stderr, "   -p <port>    : Server-Port (Default: %s)\n", DEFAULT_PORT);
-    fprintf(stderr, "   -f <outfile> : Ausgabedatei\n");
-    fprintf(stderr, "   -r <lossReq> : Request-Verlustwahrscheinlichkeit (0.0..1.0)\n");
-    fprintf(stderr, "   -a <lossAck> : ACK-Verlustwahrscheinlichkeit (0.0..1.0)\n");
+    fprintf(stderr, "   -p <port>    : Server port (Default: %s)\n", DEFAULT_PORT);
+    fprintf(stderr, "   -f <outfile> : Output file\n");
+    fprintf(stderr, "   -r <lossReq> : Request loss probability (0.0..1.0)\n");
+    fprintf(stderr, "   -a <lossAck> : ACK loss probability (0.0..1.0)\n");
     exit(EXIT_FAILURE);
 }
 
-/* Anwendungscallbacks für die ARQ-Schicht */
+/* Application callbacks for the ARQ layer */
 
-/* Ausgabedatei öffnen/neu anlegen. */
 static int appStartTransfer(void)
-{   
+{
     gFileOk = 0;
 
     if (!gOutputFile) {
@@ -35,48 +33,42 @@ static int appStartTransfer(void)
         return -1;
     }
 
-    gFp = fopen(gOutputFile, "w"); //Datei gOutputFile zum Schreiben öffnen; Zeiger in gFp ablegen
+    gFp = fopen(gOutputFile, "w");
 
     if (gFp == NULL) {
-        fprintf(stderr, "Server: Fehler beim Öffnen von '%s'\n", gOutputFile);
-        return -1; //bei Fehler Fehlermeldung ausgeben und <0 zurückgeben
+        fprintf(stderr, "Server: failed to open '%s'\n", gOutputFile);
+        return -1;
     }
     else
     {
-        gFileOk = 1; //bei Erfolg gFileOk = 1 setzen
+        gFileOk = 1;
         printf("Server: start transfer -> writing to '%s'\n", gOutputFile);
         return 0;
     }
 }
 
-/* Nutzdaten in Datei schreiben. */
 static int appWriteData(const char *buf, unsigned long len)
 {
-    // prüfen, ob gFileOk und gFp gültig sind
     if (gFileOk != 1 || gFp == NULL) {
         return -1;
     }
-    // len Bytes aus buf in gFp schreiben (fwrite)
     size_t written = fwrite(buf, 1, len, gFp);
     if (written != (size_t)len) {
-        return -1; //bei Fehler <0 zurückgeben
+        return -1;
     }
-    
-    return 0; //bei Erfolg 0 zurückgeben
+
+    return 0;
 }
 
-/* Datei schließen. */
 static void appEndTransfer(void)
 {
     if (gFp != NULL) {
         fflush(gFp);
-        fclose(gFp); //falls gFp != NULL: Datei schließen (fclose)
+        fclose(gFp);
     }
-    gFp = NULL; //gFp auf NULL setzen
-    gFileOk = 0; //gFileOk zurücksetzen
+    gFp = NULL;
+    gFileOk = 0;
 }
-
-/* --- main: Argumente auswerten, ARQ-Schicht starten --- */
 
 int main(int argc, char *argv[])
 {
@@ -85,7 +77,6 @@ int main(int argc, char *argv[])
     double lossAck   = 0.0;
     long i;
 
-    /* Programmargumente auswerten */
     if (argc > 1) {
         for (i = 1; i < argc; i++) {
             if (((argv[i][0] == '-') || (argv[i][0] == '/')) &&
@@ -93,7 +84,7 @@ int main(int argc, char *argv[])
 
                 switch (tolower((unsigned char)argv[i][1])) {
 
-                case 'p': /* Server-Port */
+                case 'p':
                     if (argv[i + 1] && argv[i + 1][0] != '-') {
                         port = argv[++i];
                         break;
@@ -101,7 +92,7 @@ int main(int argc, char *argv[])
                     usage(argv[0]);
                     break;
 
-                case 'f': /* Ausgabedatei */
+                case 'f':
                     if (argv[i + 1] && argv[i + 1][0] != '-') {
                         gOutputFile = argv[++i];
                         break;
@@ -109,7 +100,7 @@ int main(int argc, char *argv[])
                     usage(argv[0]);
                     break;
 
-                case 'r': /* Request-Verlust */
+                case 'r':
                     if (argv[i + 1] && argv[i + 1][0] != '-') {
                         lossReq = atof(argv[++i]);
                         break;
@@ -117,7 +108,7 @@ int main(int argc, char *argv[])
                     usage(argv[0]);
                     break;
 
-                case 'a': /* ACK-Verlust */
+                case 'a':
                     if (argv[i + 1] && argv[i + 1][0] != '-') {
                         lossAck = atof(argv[++i]);
                         break;
@@ -134,7 +125,7 @@ int main(int argc, char *argv[])
             }
         }
     }
-    // Überprüfe ob standart OutputFile ist definiert sonst Programmargument nutzen
+
     if (!gOutputFile) {
         usage(argv[0]);
     }
@@ -142,12 +133,11 @@ int main(int argc, char *argv[])
     printf("Server: listening on port %s\n", port);
     printf("Server: lossReq = %f, lossAck = %f\n", lossReq, lossAck);
 
-    // stare ARQ Logik aus serverSy
     if (arqServerLoop(port, lossReq, lossAck,
                       appStartTransfer, appWriteData, appEndTransfer) < 0) {
         fprintf(stderr, "Server: arqServerLoop failed\n");
         return EXIT_FAILURE;
     }
-    printf("Server erfolgreich geschlossen\n");
+    printf("Server closed successfully\n");
     return EXIT_SUCCESS;
 }

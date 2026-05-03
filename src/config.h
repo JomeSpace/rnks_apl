@@ -1,13 +1,9 @@
-/* config_example.h - example configuration for Go-Back-N client/server */
+/* config.h — Server & Client settings */
 
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
 #include <sys/socket.h>
-
-/*
- * Einstellungen für Server & Client
- */
 
 #define DEFAULT_SERVER       NULL          /* NULL ... will use the loopback interface */
 #define DEFAULT_FAMILY       PF_INET6      /* IPv6 | PF_UNSPEC ... accept either IPv4 or IPv6 */
@@ -20,7 +16,6 @@
 
 #define UNKNOWN_NAME "<unknown>"
 
-/* Beispiel-Usage-Texte für den Client (anpassen wie gewünscht) */
 #define P_MESSAGE_1 "Simple ARQ UDP client\n"
 #define P_MESSAGE_6 "Usage: %s -f filename [-a address] [-p port] [-w window]\n"
 #define P_MESSAGE_7 "  -a <address> : server address (default: %s)\n"

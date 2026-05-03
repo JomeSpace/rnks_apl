@@ -1,1 +1,20 @@
-build/*
+# Build artifacts
+build/
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+*.dSYM/
+core
+
+# Output files
+src/output.txt

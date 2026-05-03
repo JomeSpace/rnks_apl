@@ -4,33 +4,32 @@
 #include "data.h"
 
 /*
- * ARQ-Client-API
+ * ARQ Client API
  *
- * Diese Funktionen werden von der Anwendung (client.c) aufgerufen.
- * Die Implementierung in clientSy.c kapselt:
- *   - UDP-Transport (Socket, sendto/recvfrom)
- *   - ARQ-Protokoll (Fenster, Timer, Retransmits)
+ * Called by the application layer (client.c).
+ * The implementation in clientSy.c encapsulates:
+ *   - UDP transport (socket, send/recv)
+ *   - ARQ protocol (windowing, timers, retransmits)
  */
 
-/* UDP- und ARQ-Client initialisieren (Servername & Port) */
+/* Initialize UDP socket and connect to server */
 void initClient(char *name, const char *port);
 
-/* UDP- und ARQ-Client schließen (Socket freigeben etc.) */
+/* Close socket and reset client state */
 void closeClient(void);
 
-/* Verbindungsaufbau: Hello senden, Antwort abwarten.
- * Rückgabewert: 0 bei Erfolg, !=0 bei Fehler.
+/* Send Hello, wait for server acknowledgement.
+ * Returns 0 on success, non-zero on error.
  */
 int arqSendHello(int winSize);
 
-/* Eine app_unit zuverlässig zum Server übertragen.
- * Es darf pro Aufruf genau eine app_unit gesendet werden.
- * Rückgabewert: 0 bei Erfolg, !=0 bei Fehler.
+/* Reliably transfer one app_unit to the server.
+ * Returns 0 on success, non-zero on error.
  */
 int arqSendData(const struct app_unit *app, int winSize);
 
-/* Verbindung ordentlich schließen (Close/ACK).
- * Rückgabewert: 0 bei Erfolg, !=0 bei Fehler.
+/* Gracefully close the connection (drain + Close/ACK).
+ * Returns 0 on success, non-zero on error.
  */
 int arqSendClose(int winSize);
 

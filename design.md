@@ -1,50 +1,59 @@
-# Designentscheidungen
+# Design Decisions
 
-## Architektur und Schichten
-- Strikte Trennung von Anwendung und Protokoll:
-  - Anwendung: `src/client.c` und `src/server.c` (Datei lesen/schreiben, CLI)
-  - Protokoll + UDP: `src/clientSy.c` und `src/serverSy.c`
-- Pro Instanz genau ein Socket, keine Threads
+## Architecture and Layering
 
-## Transport und Adressierung
-- UDPv6 (IPv6) als Transport, wie gefordert.
-- Client verwendet `connect()` auf dem UDP-Socket, damit `send()`/`recv()` ohne Zieladresse genutzt werden können.
-- Server nutzt `recvfrom()` und merkt sich die Client-Adresse für `sendto()`.
+- Strict separation between application and protocol logic:
+  - Application: `src/client.c` and `src/server.c` (file I/O, CLI)
+  - Protocol + UDP: `src/clientSy.c` and `src/serverSy.c`
+- One socket per instance, no threads
 
-## Zeitsynchrones Sendeverhalten
-- Pro Intervall maximal ein Paketversand (oder Retransmit) gemäß der Aufgabenstellung.
-- `select()` wartet auf ACK oder Intervallende. Kommt ein ACK früh, wird bis Intervallende gewartet.
-- Intervalllänge: `GBN_TIMEOUT_INT_MS` (in `src/data.h`).
+## Transport and Addressing
 
-## Fensterverwaltung und Ringpuffer (Client)
-- GBN-Fenster über `base` (kleinste unbestaetigte SeqNr) und `seq_num` (nächste SeqNr).
-- Ringpuffer `buffer[GBN_BUFFER_SIZE]` für gesendete noch nicht bestätigte Pakete.
-- Retransmit hat Vorrang vor neuen Paketen.
+- UDP/IPv6 as transport layer.
+- Client uses `connect()` on the UDP socket so `send()`/`recv()` can be used without specifying the destination each time.
+- Server uses `recvfrom()` and remembers the client address for `sendto()`.
 
-## Timer und Retransmit
-- Timeout als Vielfaches von Intervallen (`GBN_TIMEOUT_UNITS`).
-- `timeout_counter` erhöht sich nur, wenn es ausstehende Pakete gibt und `base` sich nicht bewegt.
-- Bei Timeout: Go-Back-N ab `base`, schrittweise Retransmits pro Intervall.
+## Time-Synchronous Sending
 
-## ACK-Logik (Client)
-- Kumulative ACKs: `AnswOk.SeNo` ist die naechste erwartete SeqNr
-- ACKs auserhalb des Fensters werden verworfen (`ack_no < base` oder `ack_no > seq_num`).
-- Bei Fortschritt: `base = ack_no`, `timeout_counter = 0`.
+- At most one packet sent (or retransmitted) per interval.
+- `select()` waits for an ACK or interval end. If an ACK arrives early, the remainder of the interval is still waited out.
+- Interval length: `GBN_TIMEOUT_INT_MS` (defined in `src/data.h`).
 
-## Empfaengerlogik (Server)
-- Kein Empfänger-Puffer: Out-of-Order Pakete werden verworfen.
-- Trotzdem wird immer ein kumulativer ACK mit `expected_seq` gesendet.
-- `expected_seq` wird nur bei in-order Datenpaketen erhoeht
+## Window Management and Ring Buffer (Client)
 
-## Verbindungsaufbau und -abbau
-- Verbindungsaufbau per `ReqHello`/`AnswHello`.
-- Verbindungsabbau per `ReqClose`/`AnswOk` nach dem Drain (alle Pakete bestätigt).
+- GBN window tracked by `base` (smallest unacknowledged SeqNr) and `seq_num` (next SeqNr to send).
+- Ring buffer `buffer[GBN_BUFFER_SIZE]` stores sent but unacknowledged packets for retransmission.
+- Retransmissions always take priority over new packets.
 
-## Verlustsimulation
-- Request-Verlust (`lossReq`) in `processRequest()`.
-- ACK-Verlust (`lossAck`) in der Server-Hauptschleife vor `sendAnswer()`.
+## Timer and Retransmit
 
-## Diagramme (theorie/)
-- Weg-Zeit-Diagramme für fehlerfreien Fall, Paketverlust, ACK-Verlust, GBN W=5,
-  Intervall-Timing, ACK ausserhalb Fenster und Fenstervergleich.
-- Zustandsdiagramme für Client und Server.
+- Timeout is a multiple of intervals (`GBN_TIMEOUT_UNITS`).
+- `timeout_counter` increments only when there are outstanding packets and `base` has not advanced.
+- On timeout: Go-Back-N from `base`, retransmitting one packet per interval.
+
+## ACK Handling (Client)
+
+- Cumulative ACKs: `AnswOk.SeNo` is the next expected SeqNr.
+- ACKs outside the window are discarded (`ack_no < base` or `ack_no > seq_num`).
+- On progress: `base = ack_no`, `timeout_counter = 0`.
+
+## Receiver Logic (Server)
+
+- No receiver buffering: out-of-order packets are discarded.
+- A cumulative ACK with `expected_seq` is always sent regardless.
+- `expected_seq` only advances on in-order data packets.
+
+## Connection Lifecycle
+
+- Connection setup via `ReqHello`/`AnswHello`.
+- Connection teardown via `ReqClose`/`AnswOk` after draining (all packets acknowledged).
+
+## Loss Simulation
+
+- Request loss (`lossReq`) applied in `processRequest()`.
+- ACK loss (`lossAck`) applied in the server main loop before `sendAnswer()`.
+
+## Diagrams
+
+- Sequence diagrams for error-free transfer, packet loss, ACK loss, and window size comparison in `docs/sequence-diagrams/`.
+- State machine diagrams for client and server in `docs/state-diagrams/`.

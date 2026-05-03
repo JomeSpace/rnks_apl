@@ -1,12 +1,17 @@
 CC=gcc
 CFLAGS=-Wall -Wextra -O2
 
-all: client server
+.PHONY: all clean
 
-client:
+all: build client server
+
+build:
+	mkdir -p build
+
+client: build
 	$(CC) $(CFLAGS) src/client.c src/clientSy.c -o build/client
 
-server:
+server: build
 	$(CC) $(CFLAGS) src/server.c src/serverSy.c -o build/server
 
 clean:

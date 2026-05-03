@@ -4,47 +4,35 @@
 #include "data.h"
 
 /*
- * Anwendungscallbacks:
- * Die ARQ-Schicht ruft diese Funktionen auf, um empfangene Daten
- * an die Anwendung (server.c) zu übergeben.
+ * Application callbacks:
+ * The ARQ layer invokes these to pass received data to the
+ * application (server.c).
  */
 
+/* Called at transfer start (e.g. open output file). Returns 0 on success. */
 typedef int  (*appStartFn)(void);
-/* Start eines Transfers (z.B. Ausgabedatei öffnen).
- * Rückgabewert: 0 bei Erfolg, <0 bei Fehler.
- */
 
+/* Write payload to the application (e.g. to file). Returns 0 on success. */
 typedef int  (*appWriteFn)(const char *buf, unsigned long len);
-/* Nutzdaten in die Anwendung schreiben (z.B. in Datei).
- * Rückgabewert: 0 bei Erfolg, <0 bei Fehler.
- */
 
+/* Called at transfer end (e.g. close file). */
 typedef void (*appEndFn)(void);
-/* Transferende (z.B. Datei schließen). */
 
 
-/*
- * SAP-Funktionen – UDP-Schicht:
- * Diese Funktionen kapseln Socket-Erzeugung, recvfrom/sendto, close.
- * Die Signaturen sind vorgegeben und sollen beibehalten werden.
- */
-
+/* SAP functions — UDP layer */
 int initServer(const char *port);
 struct request *getRequest(void);
 int sendAnswer(struct answer *answerPtr);
 int exitServer(void);
 
 /*
- * ARQ-Server-Hauptschleife:
- *   - empfängt Requests über UDP
- *   - führt ARQ-Logik aus
- *   - ruft bei in-Order empfangenen Datenpaketen die Callbacks auf.
+ * ARQ server main loop:
+ *   - Receives requests over UDP
+ *   - Executes ARQ logic
+ *   - Invokes callbacks for in-order data packets
  *
- * lossReq / lossAck: Paket- und ACK-Verlustwahrscheinlichkeit (0.0–1.0)
- * appStart/appWrite/appEnd: Anwendungscallbacks.
- * Die Signatur ist vorgegeben und soll beibehalten werden.
+ * lossReq / lossAck: packet and ACK loss probability (0.0-1.0)
  */
-
 int arqServerLoop(const char *port,
                   double lossReq,
                   double lossAck,
